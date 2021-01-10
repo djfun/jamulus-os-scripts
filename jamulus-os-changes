@@ -1,0 +1,26 @@
+Using chroot:
+-------------
+sudo unsquashfs mnt/casper/filesystem.squashfs
+mv squashfs-root edit
+
+sudo mount -o bind /run/ edit/run
+sudo mount -o bind /dev/ edit/dev
+sudo chroot edit
+# make changes
+sudo umount edit/run
+sudo umount edit/dev
+sudo mksquashfs edit extract/casper/filesystem.squashfs -comp xz -e edit/boot
+
+Changes to JamulusOS:
+--------------------
+Removed packages: thunderbird hydrogen-drumkits krita inkscape linux-modules-5.4.0-26-lowlatency linux-headers-5.4.0-26 ^libreoffice
+Addded packages: yad jack_mixer zoom
+Locale and other language changes:
+```
+dpkg-reconfigure tzdata
+locale-gen de_DE
+update-locale LANG=de_DE LANGUAGE=de_DE LC_ALL=de_DE
+dpkg-reconfigure console-setup
+gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'de')]"
+dpkg-reconfigure keyboard-configuration
+```
