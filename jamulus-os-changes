@@ -6,7 +6,19 @@ mv squashfs-root edit
 sudo mount -o bind /run/ edit/run
 sudo mount -o bind /dev/ edit/dev
 sudo chroot edit
-# make changes
+# inside chroot
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devpts none /dev/pts
+export HOME=/root
+export LC_ALL=C
+# do changes
+rm ~/.bash_history
+umount /proc
+umount /sys
+umount /dev/pts
+exit
+# back in host system
 sudo umount edit/run
 sudo umount edit/dev
 sudo mksquashfs edit extract/casper/filesystem.squashfs -comp xz -e edit/boot
