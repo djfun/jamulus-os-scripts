@@ -74,7 +74,11 @@ fi
 PID=$!
 jack_mixer -c ~/.jamulus_mixer.conf &
 PID2=$!
-sleep 5
+
+while ! jack_lsp | grep "jack_mixer" || ! jack_lsp | grep "Jamulus"; do
+  sleep 2;
+done
+
 jack_connect $INPUT_DEVICE1 "jack_mixer:Jam In L"
 jack_connect $INPUT_DEVICE2 "jack_mixer:Jam In R"
 jack_connect "jack_mixer:Jam In Out L" "Jamulus:input left"
