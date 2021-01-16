@@ -57,6 +57,9 @@ fi
 
 OPTIMAL_CARD_PARAM="${soundcards[$SETTINGS_OUT]}:$SETTINGS_PERIOD:48000"
 
+# turn of screen saver and display power management
+xset s off -dpms
+
 $JACK_CONTROL eps realtime-priority 85
 set_default_jack_server "" "$OPTIMAL_CARD_PARAM"
 
