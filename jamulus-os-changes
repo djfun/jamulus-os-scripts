@@ -26,7 +26,7 @@ sudo mksquashfs edit extract/casper/filesystem.squashfs -comp xz -e edit/boot
 Changes to JamulusOS:
 --------------------
 Removed packages: thunderbird hydrogen-drumkits krita inkscape linux-modules-5.4.0-26-lowlatency linux-headers-5.4.0-26 ^libreoffice
-Addded packages: yad jack_mixer zoom
+Addded packages: yad jack_mixer zoom google-chrome
 Locale and other language changes:
 ```
 dpkg-reconfigure tzdata
