@@ -57,7 +57,7 @@
       <property name="monitoreDP-1" type="empty">
         <property name="workspace0" type="empty">
           <property name="color-style" type="empty"/>
-          <property name="image-style" type="int" value="1"/>
+          <property name="image-style" type="int" value="5"/>
           <property name="last-image" type="empty"/>
           <property name="rgba1" type="empty"/>
           <property name="backdrop-cycle-enable" type="empty"/>
