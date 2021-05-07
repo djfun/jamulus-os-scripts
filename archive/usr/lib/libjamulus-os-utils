@@ -1,0 +1,440 @@
+#!/bin/bash
+#
+# libjamulus-os-utils
+#
+# (c) 2020 Laurent Schwartz, license GPLv3
+#
+
+LIB_DIR="/usr/local/lib/jamulus"
+function i18n_os_utils() {
+  export TEXTDOMAIN=jamulus-os-utils
+  export TEXTDOMAINDIR=/usr/share/locale
+  
+  if [ "$1" != "" ]
+  then
+    echo -e $(gettext -n -- "$1")
+  else
+    EMPTY_LANG=$"None"
+    L=${LANGUAGE:-$EMPTY_LANG}
+    echo "$(gettext "language set to $L")"
+  fi
+}
+
+function version() {
+  echo "'$0'"
+  echo " Version number: $1"
+  echo " author: Laurent Schwartz <newlaurent62@gmail.com>"
+}
+
+function list_descendants()
+{
+  local children=$(ps -o pid= --ppid "$1")
+
+  for pid in $children
+  do
+    list_descendants "$pid"
+  done
+
+  echo "$children"
+}
+
+function kill_descendants() {
+  if [ "$1" != "" ]
+  then
+    kill -TERM $(list_descendants $1)
+  else
+    kill -TERM $(list_descendants $$)
+  fi
+}
+function do_watch() {
+  SLEEP_TIME=$1
+  WHEN=$2
+  shift 2
+  while true; 
+  do
+    if [ "$WHEN" == "optimize" ]
+    then
+      SCREEN="$(date;echo;$*)"
+    fi
+    clear
+    if [ "$WHEN" == "optimize" ]
+    then
+      echo -e "$SCREEN"
+    else
+      date
+      echo
+      $*
+    fi
+    sleep $SLEEP_TIME
+  done  
+}
+
+function run_timeout() {
+  ## forking is evil
+  # timeout in seconds
+  to=$1;
+  # fifo for writing exit code
+  shift
+  ($@) & local wp=$! start=0
+  while kill -0 $wp; do
+    sleep 1
+    start=$(( start + 1 ))
+    if [ $start -ge $to ]; 
+    then
+      if  kill -0 $wp
+      then
+        echo "Timeout: Killing '$@' process after $to seconds timeout !" && break
+        kill -9 $wp 
+      fi
+    fi
+  done
+}
+
+function exit_error_timeout() {
+    echo -e "\e[1m\e[31m$1 : $(i18n_os_utils "A timeout occured, the program will be halt !")\e[0m"
+    exit 1
+}
+
+function exit_error() {
+    echo -e "\e[1m\e[31m$1 : $(i18n_os_utils "An error occured, the program will be halt !")\e[0m"
+    exit 1
+}
+
+function get_jack_server_name() {
+  $JACK_CONTROL ep | perl -n -e '/Server name.*?:([^:]+)\)/ && print "$1\n";'  
+}
+
+function start_jack() {
+  echo "Starting jack ... '$JACK_CONTROL'"
+  LOG="$(run_timeout "10" "run_jack_start" 2>&1 | tee >> /dev/stdout | grep -i "timeout")"
+  if [ "$LOG" != "" ]
+  then
+    echo "TIMEOUT LOG: $LOG---"
+    echo -e "\e[1m\e[31mCan't start JACK server using jackdbus !\nSee logs for more details: ~/.log/jack/jackdbus.log\e[0m"
+    exit_error_timeout "start_jack"
+  fi
+}
+
+
+function run_jack_start() {
+  $JACK_CONTROL start
+  $JACK_CONTROL status 
+  while [ $? -ne 0 ]
+  do
+    sleep 1
+    $JACK_CONTROL status 
+  done
+}
+
+function stop_jack() {
+  echo "Stopping jack ...'$JACK_CONTROL'"  
+  LOG="$(run_timeout "10" "run_jack_stop" 2>&1 | tee >> /dev/stdout | grep -i "timeout" )"
+  if [ "$LOG" != "" ]
+  then
+    echo "TIMEOUT LOG: $LOG---"
+    exit_error_timeout "stop_jack"
+  fi
+}
+
+function run_jack_stop() {
+  killall jackd
+  $JACK_CONTROL stop
+  $JACK_CONTROL status
+  while [ $? -eq 0 ]
+  do
+    sleep 1       
+    $JACK_CONTROL status
+  done
+  #killall $JACKDBUS 
+  #$JACKDBUS auto || exit_error "run_jack_stop"
+}
+
+function get_interface() {
+  $JACK_CONTROL dp | perl -n -e '/device:.*?:(hw:[^:]+)\)/ && print "$1\n";'  
+}
+
+function get_indevice() {
+  $JACK_CONTROL dp | perl -n -e '/capture:.*?:(hw:[^:]+)\)/ && print "$1\n";'  
+}
+
+function get_outdevice() {
+  $JACK_CONTROL dp | perl -n -e '/playback:.*?:(hw:[^:]+)\)/ && print "$1\n";'  
+}
+
+function get_samplerate() {
+  $JACK_CONTROL dp | perl -n -e '/rate:.*?:([^:]+)\)/ && print "$1\n";'  
+}
+
+function get_frames() {
+  $JACK_CONTROL dp | perl -n -e '/period:.*?:([^:]+)\)/ && print "$1\n";'  
+}
+
+
+function get_current_jack_server_infos() {
+  JACK_SERVER_NAME="$(get_jack_server_name)"  
+  INTERFACE="$(get_interface)"  
+  INDEVICE="$(get_indevice)"
+  OUTDEVICE="$(get_outdevice)"
+  FRAMES="$(get_frames)"
+  SAMPLERATE="$(get_samplerate)"
+}
+
+function check_jack_settings() {
+  get_current_jack_server_infos
+  if [ "$JACK_SERVER_NAME" != "" -a "$INTERFACE" != "" -a "$FRAMES" != "" -a "$SAMPLERATE" != "" ]
+  then
+    exit 0
+  elif [ "$JACK_SERVER_NAME" != "" -a "$INDEVICE" != "" -a "$OUTDEVICE" != "" -a "$FRAMES" != "" -a "$SAMPLERATE" != "" ]
+  then
+    exit 0
+  else
+    exit 1
+  fi
+}
+
+function check_jack_for_jamulus() {
+  $(check_jack_settings)
+  get_current_jack_server_infos
+  if [ $? -eq 0 -a $FRAMES -gt 32 -a $SAMPLERATE -eq 48000 ]
+  then
+    exit 0
+  else
+    exit 1
+  fi
+}
+
+function display_current_jack_server_info() {
+  get_current_jack_server_infos
+  echo -e "\e[1mJackdbus parameters\e[0m"
+  echo
+  echo "jack Server Name     : $JACK_SERVER_NAME"
+  echo "Interface            : $INTERFACE"
+  echo "Capture (InDevice)   : $INDEVICE"
+  echo "Playback (OutDevice) : $OUTDEVICE"
+  echo "Sample rate          : $SAMPLERATE"
+  echo "Frames               : $FRAMES"
+  
+  echo 
+  echo -n "Jackdbus status      :" 
+  if jack_control status > /dev/null; then echo -e " \e[1m\e[32mstarted\e[0m"; else echo -e " \e[1m\e[31mstopped\e[0m"; fi
+  echo
+  echo -e "\e[1mJackdbus PID (if any):\e[0m" 
+  has_jackdbus 
+  
+  echo
+  echo -e "\e[1mJackd PID(s) (if any):\e[0m" 
+  if [ "$(has_jackd)" != "" ]
+  then
+    echo -e "\e[1m\e[31m$(has_jackd)\n\nYou may 'killall jackd' or press super+'m' or CTRL+ALT+m on Jamulus OS to execute the task manager, select the jackd process and kill it\e[0m"
+  fi
+  
+  echo
+  echo -e "\e[1mAdditionnal capture devices:\e[0m" 
+  echo "use front-end 'alsa_in_win' in the app menu"
+  echo "alsa_in PID(s) (if any)"
+  echo -e "$(has_alsa_in)"
+  
+  echo
+  echo -e "\e[1mAdditionnal playback devices:\e[0m"
+  echo "use front-end 'alsa_out_win' in the app menu"
+  echo "alsa_out PID(s) (if any)"
+  echo -e "$(has_alsa_out)"
+  
+  echo
+}
+
+function has_alsa_in() {
+  ps -C "alsa_in" --no-headers  -o pid,args  
+}
+
+function has_alsa_out() {
+  ps -C "alsa_out" --no-headers  -o pid,args  
+}
+
+function has_jackdbus() {
+  ps -C "jackdbus" --no-headers  -o pid,args  
+}
+
+function has_jackd() {
+  ps -C "jackd" --no-headers  -o pid,args  
+}
+
+function has_jamulus_audio_check() {
+  ps -C "jamulus-audio-check" --no-headers  -o pid,args  
+}
+
+function has_jamulus_network_check() {
+  ps -C "jamulus-network-check" --no-headers  -o pid,args  
+}
+
+function has_Jamulus() {
+  ps -C "Jamulus" --no-headers  -o pid,args  
+}
+
+
+function set_default_jack_server() {
+  JACK_SERVER_NAME=$1
+  SAMPLE_RATE="$(echo "$2" | cut -d":" -f6)"
+  PERIOD="$(echo "$2" | cut -d":" -f5)"
+  CARD_NAME="$(echo "$2" | cut -d":" -f3)"
+  
+  echo "jack server name: $JACK_SERVER_NAME"
+  
+  $JACK_CONTROL  eps name $JACK_SERVER_NAME
+  $JACK_CONTROL  ds alsa 
+  $JACK_CONTROL  eps realtime true
+  $JACK_CONTROL  dps rate $SAMPLE_RATE
+  $JACK_CONTROL  dps period $PERIOD  
+  $JACK_CONTROL  dps device hw:$CARD_NAME
+  $JACK_CONTROL  dps playback hw:$CARD_NAME
+  $JACK_CONTROL  dps capture hw:$CARD_NAME
+  
+  $JACK_CONTROL  ep | grep name:
+  $JACK_CONTROL  dp | grep rate:
+  $JACK_CONTROL  dp | grep period:
+  $JACK_CONTROL  dp | grep device:
+  $JACK_CONTROL  dp | grep playback:
+  $JACK_CONTROL  dp | grep capture:
+    
+  $JACK_CONTROL start
+
+  $JACK_CONTROL  ep   
+  
+}
+
+function set_qjacktctl_settings() {
+  if [ -f ~/.config/rncbc.org/Qjackctl.conf ]
+  then  
+    JACK_SERVER_NAME=default
+    SAMPLE_RATE="$(echo "$1" | cut -d":" -f6)"
+    PERIOD="$(echo "$1" | cut -d":" -f5)"
+    CARD_NAME="$(echo "$1" | cut -d":" -f3)"
+    perl -p -e "s/(Frames)=.*?$/$1=$PERIOD/ig;s/(InDevice=).*?$/$1=$CARD_NAME/ig;s/(Interface)=.*$/$1=$CARD_NAME/ig;(OutDevice)=.*?$/$1=$CARD_NAME/ig;s/(Driver)=.*?$/$1=alsa/ig;" ~/.config/rncbc.org/Qjackctl.conf
+  fi
+}
+
+function cmd_speedtest() {
+  echo "Running speedtest ... '$SPEEDTEST'" 
+  $SPEEDTEST --simple
+}
+
+function stop_pulseaudio() {
+  echo "Stopping pulseaudio ... '$PULSEAUDIO'" 
+
+  $PULSEAUDIO --check && killall $PULSEAUDIO
+}
+
+function run_stop_pulseaudio() {
+    killall $PULSEAUDIO
+}
+
+function start_pulseaudio() {
+  echo "Starting pulseaudio ... '$PULSEAUDIO'" 
+  
+  $PULSEAUDIO --daemonize=no --log-target=journal &
+}
+
+function is_cmd_available() {
+  PATH="$(which "$1")"
+  [ "$1" != "" -a "$PATH" != "" -a -x "$PATH" ] &&  echo "$PATH" || exit 1
+}
+
+function debug_info() {
+  if [ "$1" == "debug" ]
+  then
+    exec 4<> /dev/stdout
+  else
+    exec 4<> /dev/null
+  fi
+}
+
+function close_debug_info() {
+  exec 4>&-
+}
+
+function test_sleep_timeout() {
+  echo "Test sleep timeout..."  
+  if [ "$(run_timeout "3" "run_sleep_timeout" | grep -i "timeout")"  != "" ]
+  then
+    echo "   test_sleep_notimeout: timeout !"  
+    exit 1
+  fi
+}
+
+function test_sleep_notimeout() {
+  echo "Test sleep no timeout..."  
+  if [ "$(run_timeout "3" "run_sleep_notimeout" | grep -i "timeout")"  != "" ]
+  then
+    echo "   test_sleep_notimeout: timeout !"  
+  fi
+}
+
+function run_sleep_notimeout() {
+  for i in 1 2
+  do
+    sleep 1
+  done
+}
+
+
+function run_sleep_timeout() {
+  while sleep 1
+  do
+    echo "one more time !"
+  done
+}
+
+ValidIpAddressRegex="(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])";
+ValidHostnameRegex="(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])";
+ValidNumberRegex="[0-9]+";
+ValidPathRegex="\/(([ A-Za-z0-9-_+]|\.)+\/)*([A-Za-z0-9]|\.)+"
+ValidFilenameRegex="([ A-Za-z0-9-_+]|\.)+"
+ValidSourceRegex="([A-Za-z0-9])+"
+ValidPassRegex="([A-Za-z0-9])+"
+ValidNameRegex="((?!--)([_A-Za-z0-9-]|\.))+"
+
+function valid_ip() {
+  echo "$1" | perl -n -e "print if /^$ValidIpAddressRegex$/"
+}
+
+function valid_hostname() {
+  echo "$1" | perl -n -e "print if /^$ValidHostnameRegex$/"
+}
+
+function valid_port() {
+  PortNumber=$(echo "$1" | perl -n -e "print if /^$ValidNumberRegex$/")
+  if [ "$PortNumber" != "" ]
+  then
+    if [ $PortNumber -gt 0 -a $PortNumber -lt 65536 ]
+    then
+      echo "$PortNumber"
+    fi
+  fi
+}
+
+function valid_path() {
+  echo "$1" | perl -n -e "print if /^$ValidPathRegex$/"
+}
+
+function valid_filename() {
+  echo "$1" | perl -n -e "print if /^$ValidFilenameRegex$/"
+}
+
+function valid_icecast2_source() {
+  echo "$1" | perl -n -e "print if /^$ValidSourceRegex$/"
+}
+
+function valid_icecast2_password() {
+  echo "$1" | perl -n -e "print if /^$ValidPassRegex$/"
+}
+
+function valid_name() {
+  echo "$1" | perl -n -e "print if /^$ValidNameRegex$/"
+}
+
+export JACK_CONTROL=$(is_cmd_available "jack_control") || exit_error "jack_control : $(i18n_os_utils "The command is not available on your system !")"   
+export PULSEAUDIO=$(is_cmd_available "pulseaudio") || exit_error "pulseaudio : $(i18n_os_utils "The command is not available on your system !")"
+export QJACKCTL="$(which "qjackctl")"
+export JACKDBUS=$(is_cmd_available "jackdbus") || exit_error "jackdbus : $(i18n_os_utils "The command is not available on your system !")"
+export JACKD=$(is_cmd_available "jackd") || exit_error "jackd : $(i18n_os_utils "The command is not available on your system !")"
+export ZENITY=$(is_cmd_available "zenity") || exit_error "zenity : $(i18n_os_utils "The command is not available on your system !")"

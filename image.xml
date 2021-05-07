@@ -1,0 +1,197 @@
+<ns0:RootFileSystem xmlns:ns0="https://www.linutronix.de/projects/Elbe" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" created="2009-05-20T08:50:56" revision="6" xsi:schemaLocation="https://www.linutronix.de/projects/Elbe dbsfed.xsd">
+	<project>
+		<name>amd64-grub-hybrid-jamulusos</name>
+		<version>1.0</version>
+		<description>
+		</description>
+		<buildtype>amd64</buildtype>
+		<mirror>
+			<primary_host>ftp.de.debian.org</primary_host>
+			<primary_path>/debian</primary_path>
+			<primary_proto>http</primary_proto>
+			<url-list>
+				<url>
+					<binary>http://security.debian.org/debian-security buster/updates main contrib non-free</binary>
+					<source>http://security.debian.org/debian-security buster/updates main contrib non-free</source>
+				</url>
+				<url>
+					<binary>http://ftp.de.debian.org/debian buster main contrib non-free</binary>
+					<source>http://ftp.de.debian.org/debian buster main contrib non-free</source>
+				</url>
+
+				<url>
+					<binary>http://ftp.de.debian.org/debian buster-backports main contrib non-free</binary>
+					<source>http://ftp.de.debian.org/debian buster-backports main contrib non-free</source>
+				</url>
+
+			</url-list>
+		</mirror>
+		<suite>buster</suite>
+		<preseed>
+			<conf owner="man-db" key="man-db/install-setuid" type="boolean" value="false"/>
+			<conf owner="jackd2" key="jackd/tweak_rt_limits" type="boolean" value="true"/>
+		</preseed>
+	</project>
+	<target>
+		<hostname>jamulusos</hostname>
+		<domain>djfun.de</domain>
+		<passwd>root</passwd>
+		<console>ttyS0,115200</console>
+		<images>
+			<!-- use GPT for UEFI -->
+			<gpthd>
+				<name>jamulusos.img</name>
+				<size>4GiB</size>
+				<!-- install grub -->
+				<grub-install/>
+				<!-- small partition for the MBR in case of bios boot -->
+				<partition>
+					<size>1MiB</size>
+					<label>bios</label>
+					<biosgrub>true</biosgrub>
+				</partition>
+				<!-- the EFI system partition -->
+				<partition> 
+					<size>100MiB</size>
+					<label>uefi</label>
+					<bootable>true</bootable>
+				</partition>
+				<partition>
+					<size>remain</size>
+					<label>rfs</label>
+				</partition>
+			</gpthd>
+		</images>
+		<fstab>
+			<bylabel>
+				<label>rfs</label>
+				<mountpoint>/</mountpoint>
+				<fs>
+					<type>ext4</type>
+					<tune2fs>-i 0</tune2fs>
+				</fs>
+			</bylabel>
+			<!-- the EFI system partition needs to be mounted at /boot/efi -->
+			<bylabel>
+				<label>uefi</label>
+				<mountpoint>/boot/efi</mountpoint>
+				<fs>
+					<type>vfat</type>
+				</fs>
+			</bylabel>
+		</fstab>
+		<finetuning>
+			<command>echo 'GRUB_GFXPAYLOAD_LINUX=text' | tee -a /etc/default/grub</command>
+			<command>sed -i -e 's,^#xserver-command=X$,xserver-command=X -s 0,' /etc/lightdm/lightdm.conf</command>
+			<!-- setup german timezone, locale, keyboard -->
+			<command>echo 'Europe/Berlin' | tee /etc/timezone</command>
+			<command>cp -f /usr/share/zoneinfo/Europe/Berlin /etc/localtime</command>
+			<command>echo 'de_DE ISO-8859-1' | tee /etc/locale.gen</command>
+			<command>echo 'de_DE.UTF-8 UTF-8' | tee -a /etc/locale.gen</command>
+			<command>echo 'de_DE@euro ISO-8859-15' | tee -a /etc/locale.gen</command>
+			<command>echo 'en_US ISO-8859-1' | tee -a /etc/locale.gen</command>
+			<command>echo 'en_US.ISO-8859-15 ISO-8859-15' | tee -a /etc/locale.gen</command>
+			<command>echo 'en_US.UTF-8 UTF-8' | tee -a /etc/locale.gen</command>
+			<command>echo 'LANG=de_DE.UTF-8' | tee /etc/default/locale</command>
+			<command>echo 'XKBMODEL=pc105' | tee /etc/default/keyboard</command>
+			<command>echo 'XKBLAYOUT=de' | tee -a /etc/default/keyboard</command>
+			<command>echo 'XKBVARIANT=nodeadkeys' | tee -a /etc/default/keyboard</command>
+			<command>echo 'XKBOPTIONS=' | tee -a /etc/default/keyboard</command>
+			<command>echo 'BACKSPACE=guess' | tee -a /etc/default/keyboard</command>
+			<command>echo 'CHARMAP=UTF-8' | tee /etc/default/console-setup</command>
+			<command>echo 'CODESET=guess' | tee -a /etc/default/console-setup</command>
+			<command>locale-gen</command>
+			<command>wget https://zoom.us/client/latest/zoom_amd64.deb</command>
+			<command>dpkg --install zoom_amd64.deb</command>
+			<command>rm zoom_amd64.deb</command>
+			<command>wget https://github.com/jamulussoftware/jamulus/releases/download/r3_7_0/jamulus_3.7.0_ubuntu_amd64.deb</command>
+			<command>dpkg --install jamulus_3.7.0_ubuntu_amd64.deb</command>
+			<command>rm jamulus_3.7.0_ubuntu_amd64.deb</command>
+			<command>dpkg --install /opt/jack-mixer_13-0ubuntu2_amd64.deb</command>
+			<command>rm /opt/jack-mixer_13-0ubuntu2_amd64.deb</command>
+			<command>apt-get install -fy</command>
+			<command>sed -i s/ENV\{pvolume\}:=\"-20dB\"/ENV\{pvolume\}:=\"-5dB\"/ /usr/share/alsa/init/default</command>
+			<command>echo "blacklist pcspkr" > /etc/modprobe.d/blacklist.conf</command>
+			<adduser passwd="jam" shell="/bin/bash" groups="sudo,kvm,dialout,audio">jamulusos</adduser>
+			<command/>
+		</finetuning>
+		<install-recommends/>
+		<pkg-list>
+			<!-- grub-efi-amd64 conflicts with grub-pc, so install grub-efi-amd64-bin and grub-pc -->
+			<pkg>grub-efi-amd64-bin</pkg>
+			<pkg>grub-pc</pkg>
+			<pkg>linux-image-rt-amd64</pkg>
+			<pkg>lightdm</pkg>
+			<pkg>xfce4</pkg>
+			<pkg>xinit</pkg>
+			<pkg>xserver-xorg</pkg>
+			<pkg>gnome-terminal</pkg>
+			<pkg>wget</pkg>
+			<pkg>network-manager-gnome</pkg>
+			<pkg>chromium</pkg>
+			<pkg>firefox-esr</pkg>
+			<pkg>alsa-firmware-loaders</pkg>
+			<pkg>atmel-firmware</pkg>
+			<!-- <pkg>bladerf-firmware-fx3</pkg> -->
+			<pkg>bluez-firmware</pkg>
+			<pkg>dahdi-firmware-nonfree</pkg>
+			<pkg>dns323-firmware-tools</pkg>
+			<pkg>expeyes-firmware-dev</pkg>
+			<pkg>firmware-adi</pkg>
+			<pkg>firmware-amd-graphics</pkg>
+			<pkg>firmware-ath9k-htc</pkg>
+			<pkg>firmware-atheros</pkg>
+			<!-- <pkg>firmware-b43-installer</pkg> -->
+			<!-- <pkg>firmware-b43legacy-installer</pkg> -->
+			<pkg>firmware-bnx2</pkg>
+			<pkg>firmware-bnx2x</pkg>
+			<pkg>firmware-brcm80211</pkg>
+			<pkg>firmware-cavium</pkg>
+			<pkg>firmware-intel-sound</pkg>
+			<pkg>firmware-intelwimax</pkg>
+			<pkg>firmware-iwlwifi</pkg>
+			<pkg>firmware-libertas</pkg>
+			<pkg>firmware-linux</pkg>
+			<pkg>firmware-linux-free</pkg>
+			<pkg>firmware-linux-nonfree</pkg>
+			<pkg>firmware-misc-nonfree</pkg>
+			<pkg>firmware-myricom</pkg>
+			<pkg>firmware-netronome</pkg>
+			<pkg>firmware-netxen</pkg>
+			<pkg>firmware-qcom-media</pkg>
+			<pkg>firmware-qlogic</pkg>
+			<pkg>firmware-ralink</pkg>
+			<pkg>firmware-realtek</pkg>
+			<pkg>firmware-samsung</pkg>
+			<pkg>firmware-siano</pkg>
+			<pkg>firmware-ti-connectivity</pkg>
+			<pkg>firmware-zd1211</pkg>
+			<pkg>grub-firmware-qemu</pkg>
+			<pkg>hdmi2usb-fx2-firmware</pkg>
+			<pkg>isight-firmware-tools</pkg>
+			<pkg>midisport-firmware</pkg>
+			<pkg>nxt-firmware</pkg>
+			<pkg>sigrok-firmware-fx2lafw</pkg>
+			<pkg>ubertooth-firmware</pkg>
+			<pkg>ubertooth-firmware-source</pkg>
+			<pkg>wireless-tools</pkg>
+			<pkg>locales</pkg>
+			<pkg>qjackctl</pkg>
+			<pkg>yad</pkg>
+			<pkg>libgl1-mesa-glx</pkg>
+			<pkg>libegl1-mesa</pkg>
+			<pkg>libxcb-xtest0</pkg>
+			<pkg>ibus</pkg>
+			<pkg>sudo</pkg>
+			<pkg>mousepad</pkg>
+			<pkg>pavucontrol</pkg>
+			<pkg>pulseaudio</pkg>
+			<pkg>x11-xserver-utils</pkg>
+			<pkg>alsa-utils</pkg>
+			<pkg>python3</pkg>
+			<pkg>python3-gi</pkg>
+			<pkg>libglib2.0-0</pkg>
+			<pkg>python3-gi-cairo</pkg>
+		</pkg-list>
+	</target>
+</ns0:RootFileSystem>
